@@ -1,0 +1,104 @@
+diff --git a/vla/dreamvla/modeling_dreamvl.py b/vla/dreamvla/modeling_dreamvl.py
+index 853a3e4..9403b90 100644
+--- a/vla/dreamvla/modeling_dreamvl.py
++++ b/vla/dreamvla/modeling_dreamvl.py
+@@ -1021,7 +1021,7 @@ class DreamVLPreTrainedModel(PreTrainedModel):
+         weights_only: bool = True,
+         **kwargs,
+     ):
+-        _model = super().from_pretrained(
++        _loaded = super().from_pretrained(
+             pretrained_model_name_or_path,
+             *model_args,
+             config=config,
+@@ -1035,6 +1035,8 @@ class DreamVLPreTrainedModel(PreTrainedModel):
+             weights_only=weights_only,
+             **kwargs,
+         )
++        # diff-ARA: retain Hugging Face loading diagnostics when requested.
++        _model = _loaded[0] if isinstance(_loaded, tuple) else _loaded
+         # NOTE(Lin): we need to override the generation config
+         # because the generation config loaded in `from_pretrained` 
+         # does not include all the attributes of DreamVLGenerationConfig
+@@ -1056,7 +1058,7 @@ class DreamVLPreTrainedModel(PreTrainedModel):
+             _from_auto=from_auto_class,
+             _from_pipeline=from_pipeline,
+         )
+-        return _model
++        return _loaded
+ 
+ 
+ class DreamVLVisionTransformerPretrainedModel(DreamVLPreTrainedModel):
+@@ -2357,4 +2359,4 @@ class DreamVLAForActionPrediction(DreamVLModel):
+             normalized_actions,
+         )
+ 
+-        return actions
+\ No newline at end of file
++        return actions
+diff --git a/vla/prismatic/vla/constants.py b/vla/prismatic/vla/constants.py
+index 2343193..58b3bf5 100644
+--- a/vla/prismatic/vla/constants.py
++++ b/vla/prismatic/vla/constants.py
+@@ -5,6 +5,7 @@ Attempts to automatically identify the correct constants to set based on the Pyt
+ training or evaluation. If it is unclear, defaults to using the LIBERO simulation benchmark constants.
+ """
+ import sys
++import os
+ from enum import Enum
+ 
+ # Llama 2 token constants
+@@ -54,6 +55,8 @@ RT1_CONSTANTS = {
+ 
+ # Function to detect robot platform from command line arguments
+ def detect_robot_platform():
++    if os.environ.get('DIFF_ARA_PLATFORM') == 'PANDA':
++        return 'PANDA'
+     cmd_args = " ".join(sys.argv).lower()
+ 
+     if "libero" in cmd_args:
+@@ -73,7 +76,7 @@ def detect_robot_platform():
+ ROBOT_PLATFORM = detect_robot_platform()
+ 
+ # Set the appropriate constants based on the detected platform
+-if ROBOT_PLATFORM == "LIBERO":
++if ROBOT_PLATFORM in ("LIBERO", "PANDA"):
+     constants = LIBERO_CONSTANTS
+ elif ROBOT_PLATFORM == "ALOHA":
+     constants = ALOHA_CONSTANTS
+diff --git a/vla/vla-scripts/finetune_dream.py b/vla/vla-scripts/finetune_dream.py
+index c7ffb27..418b124 100644
+--- a/vla/vla-scripts/finetune_dream.py
++++ b/vla/vla-scripts/finetune_dream.py
+@@ -307,7 +307,9 @@ def context_adaptive_reweight(seq_len, distribution="symmetric-geometric", **kwa
+     
+     return matrix
+ 
+-weight_matrix = context_adaptive_reweight(50000, cart_p=0.1)
++# diff-ARA: the Flow Matching path does not use CART. Avoid allocating a
++# 50,000 x 50,000 host tensor at import; retain the original discrete formula.
++weight_matrix = None
+ 
+ 
+ def get_current_action_mask(token_ids):
+@@ -492,7 +494,7 @@ def run_forward_pass(
+             discrete_diff_loss  = discrete_diff_loss * (1 - p_mask[:, 1:][loss_mask])
+         elif reweighting == 'cart':
+             seqlen = shifted_labels.shape[1]
+-            _weight_matrix = weight_matrix[:seqlen, :seqlen].to(loss_mask.device)
++            _weight_matrix = context_adaptive_reweight(seqlen, cart_p=0.1).to(loss_mask.device)
+             non_mask = ~loss_mask # loss_mask indicates where is mask
+             weight = non_mask.type_as(_weight_matrix).matmul(_weight_matrix).masked_fill(non_mask, 0)
+             discrete_diff_loss  = discrete_diff_loss * weight[loss_mask]
+@@ -986,9 +988,9 @@ def finetune(cfg: FinetuneConfig) -> None:
+ 
+     # Instantiate optimizer
+     trainable_params = [param for param in vla.parameters() if param.requires_grad]
+-    if cfg.use_l1_regression or cfg.use_diffusion:
++    if cfg.use_l1_regression or cfg.use_diffusion or cfg.use_flow_matching:
+         trainable_params += [param for param in action_head.parameters() if param.requires_grad]
+-    if cfg.use_diffusion:
++    if cfg.use_diffusion or cfg.use_flow_matching:
+         trainable_params += [param for param in noisy_action_projector.parameters() if param.requires_grad]
+     if cfg.use_proprio:
+         trainable_params += [param for param in proprio_projector.parameters() if param.requires_grad]

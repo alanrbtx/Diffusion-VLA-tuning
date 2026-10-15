@@ -1,0 +1,6 @@
+[submodule "third_party/Dream-VLX"]
+	path = third_party/Dream-VLX
+	url = https://github.com/DreamLM/Dream-VLX.git
+[submodule "dlimp-upstream"]
+	path = dlimp-upstream
+	url = https://github.com/moojink/dlimp_openvla.git
