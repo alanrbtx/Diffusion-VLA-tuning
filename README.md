@@ -1,89 +1,80 @@
-# Diffusion-VLA tuning
+# Jocasta-diff-VLA — Diffusion-VLA tuning
 
-Dream-VLA-7B fine-tuning on simulated **Panda Lift**, using the Dream-VLX authors' continuous Flow Matching objective. This repository exports the training implementation used for the 100,000-step Panda run on 14–15 October 2026.
+**Model: [RobotLearningLab/Jocasta-diff-VLA](https://huggingface.co/RobotLearningLab/Jocasta-diff-VLA)**
 
-The training loop, model bindings, dataset adapter, inference function, checks, and Panda configuration are copied from the working experiment. Upstream dependencies are pinned Git submodules; the three modified upstream files are reproduced by a versioned patch.
+Dream-VLA-7B adapted to eight simulated Panda manipulation task families in robosuite using the Dream-VLX authors' Flow Matching loss. The fixed final checkpoint (100,000 steps) achieved **332/512 sustained successes (64.8%)** on our development scenes. This is one trained policy and one training seed, not an official LIBERO benchmark or real-robot result.
 
-## Training recipe
+| Task | Sustained successes |
+|---|---:|
+| Lift |64/64|
+| PickPlace |40/64|
+| Stack |43/64|
+| Door |34/64|
+| NutAssembly |32/64|
+| ToolHang |9/64|
+| Push |61/64|
+| Drawer |49/64|
 
-| Setting | Value |
-| --- | --- |
-| Base checkpoint | `Dream-org/Dream-VLA-7B` |
-| Model revision | `0cd0e25c1771c5b468c74585b5cf35c4a4aa315c` |
-| Objective | Author's Flow Matching velocity MSE |
-| Optimizer | AdamW, learning rate `1e-4` |
-| Training | 100,000 optimizer updates, global batch 64 |
-| LoRA | Rank 32, alpha 16, dropout 0, all linear layers |
-| Inputs | Current external RGB, wrist RGB, proprioception (8D), instruction |
-| Actions | 8-action chunks, 7 values per action |
-| Inference | 4 Flow Matching steps, execute 8 actions between observations |
-| Data | 1,024 training and 64 development trajectories |
-| Seed | `84907` |
-| Reference training hardware | 8 H100 GPUs, one node, microbatch 8 per GPU |
+The Hub release includes the **LoRA adapter plus trained action head, noisy-action projector and proprioception projector**, normalization statistics and training configuration. The pinned original Dream-VLA base weights are downloaded separately by the loader. Loading only the LoRA adapter does not reconstruct this policy.
 
-The current adapter uses one instruction, `pick up the red cube`. It is a single-task Panda transfer. The number of steps follows the paper's 100,000-step setting; the upstream release shell script uses a different step count. This repository retains the Panda run's explicit configuration in [`panda-author.json`](panda-author.json).
-
-## Get the exact source
+## Install the pinned code
 
 ```bash
 git clone --recurse-submodules https://github.com/alanrbtx/Diffusion-VLA-tuning.git
 cd Diffusion-VLA-tuning
 git -C third_party/Dream-VLX apply --check ../../patches/dream-vlx-panda.patch
 git -C third_party/Dream-VLX apply ../../patches/dream-vlx-panda.patch
+python -m pip install -r requirements.lock -r requirements-multitask.txt
 ```
 
-Apply the patch once after initializing the submodules. `upstream-vla` is a relative symlink to `third_party/Dream-VLX/vla`, preserving the imports used during training. Downloading GitHub's ZIP alone does not populate submodules.
+Apply the patch once. `upstream-vla` points to the pinned Dream-VLX submodule; a GitHub ZIP does not include submodules. Reference environment: Linux, Python3.10.18, PyTorch2.5.1+cu124, Transformers4.51.3, BF16/SDPA. Dependencies and the inference release are validated in an allocated CUDA pod; a fresh public-index installation is not claimed as tested.
 
-The patch preserves the author loss and sampler while adding:
+## Load and predict
 
-- Explicit Panda action/proprioception dimensions.
-- Lazy allocation for the unused discrete CART branch.
-- Flow Matching head/projector inclusion in the upstream optimizer setup.
-- Hugging Face loading diagnostics through the model wrapper.
+Expose exactly one CUDA GPU to the model process. For simulation, run EGL on a **different physical GPU**, using a separate process as in the evaluation.
 
-Our `train.py` wraps all trainable components in one DDP module, checks optimizer coverage, and saves model, optimizer, per-rank RNG, and sampler state atomically.
+```python
+import numpy as np
+from load_policy import load_policy, predict_action
 
-## Environment and launch
+policy, processor, config = load_policy('RobotLearningLab/Jocasta-diff-VLA')
+# For reproducibility, also pass revision='<Hub commit>' and optionally
+# base_model_path='/path/to/pinned/Dream-VLA-7B' to reuse local base weights.
 
-Use an allocated **Linux CUDA GPU pod**. The executable research entrypoints require Kubernetes and CUDA. The reference model environment is Python **3.10.18**, PyTorch **2.5.1**, Transformers **4.51.3**, TensorFlow **2.15.0**, and NumPy **1.24.0**.
-
-From the repository root inside that pod:
-
-```bash
-python3.10 -m venv /tmp/dream-vla-training
-source /tmp/dream-vla-training/bin/activate
-python -m pip install pip==25.0.1
-python -m pip install -r requirements.lock
-python -m pip check
+# primary, wrist: uint8 RGB arrays of shape (224, 224, 3)
+# proprio: float32 (8,), xyz + axis-angle orientation + two gripper joints
+# Use the same observation conventions as the recorded Panda data.
+actions = predict_action(policy, processor, config, primary, wrist, proprio,
+                         'pick up the red cube', seed=84907)
+assert actions.shape == (8, 7)
 ```
 
-[`requirements.lock`](requirements.lock) retains the recorded package versions. Its original machine-specific `dlimp` file URL is replaced with `./dlimp-upstream`, pinned to the same commit. Installation through public package indexes has not been re-tested for this publication.
+Each action contains physical world-frame XYZ deltas in metres, extrinsic XYZ Euler deltas in radians and gripper openness. **Do not send these directly as normalized robosuite OSC commands.** `panda_adapter.PandaAdapter` performs the recorded controller conversion; `robot_state.quat2axisangle` implements the recorded proprioception orientation convention. Replan after each8-action block.
 
-Then follow:
+`load_policy.py` verifies the published file hashes, loads the exact base revision and all trained components, freezes the model, and uses the same deterministic inference mode as the evaluated checkpoint. It does not train, initialize a simulator or claim a successful task from a forward pass.
 
-1. [Dataset format and cache preparation](docs/dataset.md).
-2. [Training, engineering checks, and checkpoint resume](docs/training.md).
+## Train
 
-Training consumes saved observations and does not initialize EGL. For later simulation or evaluation, **CUDA and EGL must use different physical GPUs**. The recorded simulator environment was separate: Python 3.12, NumPy 1.26.4, SciPy 1.17.1, MuJoCo 3.3.5, robosuite 1.5.1, `hard_reset=False`.
+The current eight-task implementation is in [`multitask/`](multitask/). Follow [the multitask recipe and dataset contract](docs/multitask.md).
 
-## Contents
+- Original base: `Dream-org/Dream-VLA-7B@0cd0e25c1771c5b468c74585b5cf35c4a4aa315c`.
+- 100,000 AdamW updates at1e-4; global batch64;4 GPUs × microbatch8 × accumulation2.
+- LoRA rank32/alpha16/dropout0; author Flow Matching head/projectors,4 flow steps, action chunk8.
+- 8,140 successful training trajectories,30 goal variants,510 training instruction strings across eight families.
+- Two224RGB cameras,8D proprioception and the task instruction.
 
-| File | Purpose |
-| --- | --- |
-| `train.py` | DDP training, optimizer coverage, atomic checkpoints, resume |
-| `bindings.py` | Direct bindings to author model, loss, heads, and projectors |
-| `data.py` | Panda arrays, author transforms, normalization, stateful sampler |
-| `inference.py` | Two-image prompt and 4-step Flow Matching inference |
-| `cache_data.py` | Verify recorded episode archives and decode a training cache |
-| `check.py` | Author-loss parity, parameter updates, reload, inference preflight |
-| `compare_resume.py` | Compare uninterrupted and resumed engineering checkpoints |
-| `robot_state.py` | Quaternion-to-axis-angle convention used for Panda state |
-| `patches/dream-vlx-panda.patch` | Exact modifications to the pinned author source |
+The root `train.py`, `data.py`, `inference.py` and `panda-author.json` preserve the earlier single-task Lift implementation; its historical instructions remain in [docs/training.md](docs/training.md) and [docs/dataset.md](docs/dataset.md). Use **`multitask/train.py`** for the released eight-task model's recipe.
 
-Datasets, base-model weights, trained checkpoints, private cluster orchestration, and experiment logs are not distributed here. This release trains on an existing Panda dataset; it does not include a new demonstration collector or a closed-loop evaluation launcher. `inference.py` exposes the policy function for integration with a simulator.
+Raw demonstrations and optimizer/RNG training-resume files are not included in this release. Public model files are sufficient for inference with the pinned base and this code; reproducing training requires the documented dataset/cache.
 
-## Validation and provenance
+## Evidence and scope
 
-The preceding GPU run verified author-forward loss parity, updates to all trainable components, checkpoint reload, and a deterministic DDP resume comparison. This publication does not repeat training or evaluation. A completed training loop writes `trained_pending_evaluation`; task success requires a separate closed-loop evaluation.
+Each family used64 fixed development scenes, original physical configuration and horizon,10 settling steps, `hard_reset=False`, and success held for10 consecutive physical steps. Every recorded policy input, physical action, controller conversion and outcome trace was independently audited. See [evaluation-results.json](evaluation-results.json).
 
-See [upstream provenance and attribution](THIRD_PARTY.md). Core source hashes from the recorded training snapshot are preserved in [`provenance/training-core.sha256`](provenance/training-core.sha256).
+Original pretrained Dream-VLA: **0/64 PickPlace**; adapted Jocasta-diff-VLA: **40/64** on the same scenes. The original uses one image, one action per call, discrete diffusion and Bridge normalization; the adapted policy uses two images/proprio, chunk8, Flow Matching and Panda normalization. This measures the transfer of these complete policies, not a controlled diffusion-versus-autoregression or backbone-only effect.
+
+ToolHang remains weak (9/64). Generalization to other robots, unseen task families, real hardware or the reserved test split has not been established. This release is a manipulation policy; it does not implement autonomous replication or learned mission-memory inheritance.
+
+The core training modules are checked against their frozen training snapshot. Release loading is checked against the original checkpoint on saved inputs from every task family. See [`provenance/`](provenance/) for hashes and verification.
+
+Architecture, loss, sampler and action modules come from Dream-VLX. See [THIRD_PARTY.md](THIRD_PARTY.md) for attribution, pinned revisions, the exact patch and the authors' citation.

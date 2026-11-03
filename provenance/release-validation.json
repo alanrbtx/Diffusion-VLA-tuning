@@ -1,0 +1,21 @@
+{
+  "status": "verified",
+  "original_loaded_tensors_exact": 680,
+  "public_loaded_tensors_exact": 680,
+  "saved_input_families": [
+    "Lift",
+    "PickPlace",
+    "Stack",
+    "Door",
+    "NutAssembly",
+    "ToolHang",
+    "Push",
+    "Drawer"
+  ],
+  "all_eight_families_exact": true,
+  "max_action_difference": 0,
+  "kind": "release loader equality, no new closed-loop evaluation",
+  "gpu": "NVIDIA H200",
+  "torch": "2.5.1+cu124",
+  "transformers": "4.51.3"
+}

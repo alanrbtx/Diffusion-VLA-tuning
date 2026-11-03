@@ -30,3 +30,9 @@ The local package path in the recorded dependency lock was changed to `./dlimp-u
   year={2025}
 }
 ```
+
+## Eight-task release
+
+`multitask/{train,data,single_task_data,inference,prompt,balanced_index}.py` and its config are byte-checked against the frozen final eight-task training source. `provenance/multitask-core.sha256` records that mapping; the earlier `training-core.sha256` still identifies the preserved single-task root files. `load_policy.py` is the public packaging layer; it performs no training and loads the same LoRA and component tensors. The release validation compares its actions to the original loader on saved observations from all eight families.
+
+Model: https://huggingface.co/RobotLearningLab/Jocasta-diff-VLA . The checkpoint is derived from the pinned Dream-VLA base and requires it for inference; the adapter alone is not a standalone model. Dream-VLA upstream attribution and model terms remain applicable.

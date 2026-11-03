@@ -1,0 +1,105 @@
+{
+  "evidence_tier": "development; one training seed; final checkpoint only",
+  "episodes": 512,
+  "sustained_successes": 332,
+  "success_rate": 0.6484375,
+  "by_family": {
+    "Lift": {
+      "episodes": 64,
+      "sustained_successes": 64,
+      "success_rate": 1.0,
+      "wilson95": [
+        0.9433759402071946,
+        1.0
+      ]
+    },
+    "PickPlace": {
+      "episodes": 64,
+      "sustained_successes": 40,
+      "success_rate": 0.625,
+      "wilson95": [
+        0.502503786840045,
+        0.7333401982117536
+      ]
+    },
+    "Stack": {
+      "episodes": 64,
+      "sustained_successes": 43,
+      "success_rate": 0.671875,
+      "wilson95": [
+        0.549991058490915,
+        0.7742944209553081
+      ]
+    },
+    "Door": {
+      "episodes": 64,
+      "sustained_successes": 34,
+      "success_rate": 0.53125,
+      "wilson95": [
+        0.41072087051471007,
+        0.6482401257482395
+      ]
+    },
+    "NutAssembly": {
+      "episodes": 64,
+      "sustained_successes": 32,
+      "success_rate": 0.5,
+      "wilson95": [
+        0.3810209474394701,
+        0.6189790525605299
+      ]
+    },
+    "ToolHang": {
+      "episodes": 64,
+      "sustained_successes": 9,
+      "success_rate": 0.140625,
+      "wilson95": [
+        0.0757857255603086,
+        0.24616281741577023
+      ]
+    },
+    "Push": {
+      "episodes": 64,
+      "sustained_successes": 61,
+      "success_rate": 0.953125,
+      "wilson95": [
+        0.8710034625990631,
+        0.983930983213707
+      ]
+    },
+    "Drawer": {
+      "episodes": 64,
+      "sustained_successes": 49,
+      "success_rate": 0.765625,
+      "wilson95": [
+        0.6486674241743136,
+        0.8525010440607586
+      ]
+    }
+  },
+  "success_rule": "10 consecutive physical steps satisfying original task predicate",
+  "seeds": [
+    30000,
+    30063
+  ],
+  "test_access": false,
+  "trained_calls_audited": 45254,
+  "trained_steps_audited": 365450,
+  "base_pickplace": {
+    "episodes": 64,
+    "sustained_successes": 0,
+    "success_rate": 0.0,
+    "wilson95": [
+      0.0,
+      0.05662405979280534
+    ]
+  },
+  "paired_pickplace": {
+    "base_successes": 0,
+    "trained_successes": 40,
+    "both_success": 0,
+    "trained_only": 40,
+    "base_only": 0
+  },
+  "interface_difference": "Original: one RGB, chunk1, discrete diffusion4, bridge_orig. Adapted: two RGB+proprio8, chunk8, Flow Matching4, panda_multitask_v1."
+}
