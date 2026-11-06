@@ -1,0 +1,10 @@
+{
+  "format": "jocasta-diff-vla-adapter-v1",
+  "base_model": "Dream-org/Dream-VLA-7B",
+  "base_revision": "0cd0e25c1771c5b468c74585b5cf35c4a4aa315c",
+  "release_manifest": "release.json",
+  "adapter_path": "lora_adapter",
+  "components_file": "components.pt",
+  "training_config_file": "training_config.json",
+  "dataset_statistics_file": "dataset_statistics.json"
+}

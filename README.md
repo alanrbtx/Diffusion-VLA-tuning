@@ -53,6 +53,16 @@ Each action contains physical world-frame XYZ deltas in metres, extrinsic XYZ Eu
 
 `load_policy.py` verifies the published file hashes, loads the exact base revision and all trained components, freezes the model, and uses the same deterministic inference mode as the evaluated checkpoint. It does not train, initialize a simulator or claim a successful task from a forward pass.
 
+The model repository's root `config.json` describes the release layout and pinned
+base; its source is [`release/config.json`](release/config.json). The existing
+loader uses `release.json` for integrity checks and downloads the complete
+snapshot, including this metadata. Older pinned releases remain supported.
+This is package metadata, not a Transformers AutoModel configuration.
+Normal Hub snapshot downloads include it, enabling Hugging Face's standard
+[download accounting](https://huggingface.co/docs/hub/models-download-stats).
+No additional telemetry requests are sent. The Hub counter measures file
+requests, not unique users or completed inference runs.
+
 ## Train
 
 The current eight-task implementation is in [`multitask/`](multitask/). Follow [the multitask recipe and dataset contract](docs/multitask.md).
